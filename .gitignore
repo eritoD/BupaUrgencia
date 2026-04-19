@@ -3,15 +3,32 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+dist/
+build/
 
 # Base de datos local
 *.db
+*.sqlite3
 
 # Node
 node_modules/
 
+# Build
+frontend/dist/
+
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Entorno
 .env
+.env.local
+.env.*.local
