@@ -27,14 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Servir archivos estáticos de React ─────────────────────────────────────────
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
-else:
-    print(f"⚠️  Static directory not found: {static_dir}")
-
-
 # ── Auth middleware ────────────────────────────────────────────────────────────
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -1639,3 +1631,11 @@ def delete_user(user_id: int, current_user: models.User = Depends(get_current_ad
     db.delete(user)
     db.commit()
     return {"ok": True}
+
+
+# ── Servir archivos estáticos de React (debe ir al FINAL) ─────────────────────
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+else:
+    print(f"⚠️  Static directory not found: {static_dir}")
