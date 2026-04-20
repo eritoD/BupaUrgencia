@@ -1634,7 +1634,7 @@ def delete_user(user_id: int, current_user: models.User = Depends(get_current_ad
 
 
 # ── Servir archivos estáticos de React (debe ir al FINAL) ─────────────────────
-static_dir = Path(__file__).parent.parent / "static"
+static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
 else:
