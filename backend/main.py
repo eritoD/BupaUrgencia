@@ -1,6 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+import os
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
@@ -8,6 +11,10 @@ import random
 
 import models
 from database import engine, get_db, SessionLocal
+from auth import (
+    get_current_user, get_current_admin,
+    get_password_hash, verify_password, create_access_token,
+)
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -19,6 +26,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Auth middleware ────────────────────────────────────────────────────────────
+OPEN_PATHS = {"/api/auth/login", "/docs", "/openapi.json", "/redoc"}
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if request.url.path in OPEN_PATHS or request.method == "OPTIONS":
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "No autenticado"})
+    return await call_next(request)
+
+
+# ── Seed admin user ────────────────────────────────────────────────────────────
+def seed_admin():
+    db = SessionLocal()
+    try:
+        existing = db.query(models.User).filter(models.User.username == "admin").first()
+        if not existing:
+            admin = models.User(
+                username="admin",
+                full_name="Administrador",
+                hashed_password=get_password_hash("admin"),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            db.commit()
+    finally:
+        db.close()
+
+seed_admin()
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
@@ -1491,3 +1532,101 @@ def get_dashboard_operaciones(db: Session = Depends(get_db)):
             "sin_espera_critica": sum(1 for p in pipeline if p["critico"]) == 0,
         },
     }
+
+
+# ── Auth endpoints ─────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    full_name: Optional[str] = None
+    role: str = "viewer"
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@app.post("/api/auth/login")
+def login(data: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == data.username).first()
+    if not user or not verify_password(data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuario desactivado")
+    token = create_access_token(data={"sub": user.username})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role},
+    }
+
+
+@app.get("/api/auth/me")
+def get_me(current_user: models.User = Depends(get_current_user)):
+    return {"id": current_user.id, "username": current_user.username, "full_name": current_user.full_name, "role": current_user.role}
+
+
+@app.get("/api/auth/users")
+def list_users(current_user: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    users = db.query(models.User).all()
+    return [
+        {"id": u.id, "username": u.username, "full_name": u.full_name, "role": u.role, "is_active": u.is_active, "created_at": u.created_at}
+        for u in users
+    ]
+
+
+@app.post("/api/auth/users")
+def create_user(data: UserCreate, current_user: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    if db.query(models.User).filter(models.User.username == data.username).first():
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+    if data.role not in ("admin", "viewer"):
+        raise HTTPException(status_code=400, detail="Rol inválido. Use 'admin' o 'viewer'")
+    user = models.User(
+        username=data.username,
+        full_name=data.full_name,
+        hashed_password=get_password_hash(data.password),
+        role=data.role,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role, "is_active": user.is_active}
+
+
+@app.put("/api/auth/users/{user_id}")
+def update_user(user_id: int, data: UserUpdate, current_user: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.username == "admin" and data.role and data.role != "admin":
+        raise HTTPException(status_code=400, detail="No se puede cambiar el rol del administrador principal")
+    if data.full_name is not None:
+        user.full_name = data.full_name
+    if data.role is not None:
+        user.role = data.role
+    if data.password:
+        user.hashed_password = get_password_hash(data.password)
+    if data.is_active is not None:
+        user.is_active = data.is_active
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role, "is_active": user.is_active}
+
+
+@app.delete("/api/auth/users/{user_id}")
+def delete_user(user_id: int, current_user: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.username == "admin":
+        raise HTTPException(status_code=400, detail="No se puede eliminar el administrador principal")
+    db.delete(user)
+    db.commit()
+    return {"ok": True}

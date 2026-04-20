@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 // ── Icons (SVG inline) ────────────────────────────────────────────────────────
 const Icon = ({ children, size = 18 }) => (
@@ -85,9 +86,16 @@ function useCurrentTime() {
 
 export default function Layout({ children }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [openSections, setOpenSections] = useState({ urgencias: true, validacion: true, hospitalizacion: true, analisis: true })
   const currentTime = useCurrentTime()
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   const toggleSection = (id) => {
     if (collapsed) return
@@ -221,11 +229,36 @@ export default function Layout({ children }) {
             </div>
             <div className="w-px h-5 bg-gray-200" />
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-[#003087] flex items-center justify-center">
-                <span className="text-white text-[10px] font-bold">US</span>
+              <div className="w-7 h-7 rounded-full bg-[#003087] flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-[10px] font-bold">
+                  {(user?.full_name || user?.username || 'U').slice(0, 2).toUpperCase()}
+                </span>
               </div>
-              <span className="text-xs text-gray-600 font-medium hidden lg:block">Usuario Demo</span>
+              <div className="hidden lg:flex flex-col leading-tight">
+                <span className="text-xs text-gray-800 font-semibold">{user?.full_name || user?.username}</span>
+                <span className="text-[10px] text-gray-400 capitalize">{user?.role === 'admin' ? 'Administrador' : 'Visualizador'}</span>
+              </div>
             </div>
+            {user?.role === 'admin' && (
+              <>
+                <div className="w-px h-5 bg-gray-200" />
+                <NavLink
+                  to="/usuarios"
+                  className={({ isActive }) =>
+                    `text-xs font-medium transition-colors hidden lg:block ${isActive ? 'text-[#009FE3]' : 'text-gray-400 hover:text-gray-700'}`
+                  }
+                >
+                  Usuarios
+                </NavLink>
+              </>
+            )}
+            <div className="w-px h-5 bg-gray-200" />
+            <button
+              onClick={handleLogout}
+              className="text-xs text-gray-400 hover:text-red-500 font-medium transition-colors"
+            >
+              Salir
+            </button>
           </div>
         </header>
 
