@@ -36,11 +36,13 @@ else:
 
 
 # ── Auth middleware ────────────────────────────────────────────────────────────
-OPEN_PATHS = {"/api/auth/login", "/docs", "/openapi.json", "/redoc"}
-
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    if request.url.path in OPEN_PATHS or request.method == "OPTIONS":
+    path = request.url.path
+    # Solo proteger rutas /api/ excepto el login
+    if not path.startswith("/api/") or path == "/api/auth/login":
+        return await call_next(request)
+    if request.method == "OPTIONS":
         return await call_next(request)
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
