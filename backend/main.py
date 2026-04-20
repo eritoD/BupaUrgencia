@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
@@ -26,6 +26,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Servir archivos estáticos de React ─────────────────────────────────────────
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+else:
+    print(f"⚠️  Static directory not found: {static_dir}")
 
 
 # ── Auth middleware ────────────────────────────────────────────────────────────

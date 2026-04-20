@@ -20,6 +20,6 @@ COPY backend/ ./
 # Copy built frontend into a folder FastAPI will serve as static files
 COPY --from=frontend-build /app/frontend/dist ./static
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
